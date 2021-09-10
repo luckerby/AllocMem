@@ -2,30 +2,49 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
+using CommandLine;
 
 namespace AllocMem
 {
+    class Options
+    {
+        [Option('m', Required = false, Default = 1, HelpText = "Size of individual memory blocks to allocate in MBs")]
+        public int SizeOfBlock { get; set; }
+        [Option('f', Required = false, Default = 1, HelpText = "Touch fill ratio, how much of the committed memory gets touched per each memory block allocated")]
+        public double TouchFillRatio { get; set; }
+        [Option('x', Required = true, HelpText = "Stop allocating once memory committed reaches this value in MBs (use 0 to exhaust)")]
+        public int MaxMemoryToCommit { get; set; }
+        [Option('e', Required = false, Default = 0, HelpText = "Time between allocations in ms")]
+        public int Delay { get; set; }
+    }
+
     class Program
     {
         private static readonly AutoResetEvent _closingEvent = new AutoResetEvent(false);
         static void Main(string[] args)
         {
-            // === ArrayList ===
-            // For n int values inside a pre-allocated ArrayList:
-            //  - The internal array will consume n x <pointer size> (plus 2x pointer size for its own sync block index and type object pointer)
-            //  - The boxed ints will take n x (2x pointer size + pointer size per int value)
-            //  - 2x pointer size for the ArrayList itself (own sync block index and type object pointer)
-            // Total: n x ptr_size + 2 x ptr_size + n x (2 x ptr_size + ptr_size) + 2 x ptr_size
-            //        = n x 4 x ptr_size + 4 x ptr_size
-            //
-            // For x64, sized consumed is:
-            //  - for 1,024 elements:        1,024 x 4 x 8 bytes + 4 x 8 bytes = 32,800
-            //  - for 100,000 elements:      100,000 x 4 x 8 bytes + 4 x 8 bytes = 3,200,032
-            //  - for 100,000,000 elements:  100,000,000 x 4 x 8 bytes + 4 x 8 bytes = 3,200,000,032
-            //
-            // Note that despite the fact that an int should take 4 bytes on either x86/x64, in 64-bit the field for
-            //  the array elements takes 8 bytes for ArrayList as seen with dotMemory
-            //
+            var res = Parser.Default.ParseArguments<Options>(args)
+                .WithParsed(RunOptions)
+                .WithNotParsed(HandleParseError);
+            Console.WriteLine("Parsed the args");
+        }
+
+        static void RunOptions(Options opts)
+        {
+            Console.WriteLine("Params parsed, press a key to continue");
+            Console.ReadLine();
+            // We're here if the argument parsing was successful. Call the
+            //  method that allocates memory and supply the needed values as params
+            LeakMemory(opts.SizeOfBlock, opts.TouchFillRatio, opts.Delay, opts.MaxMemoryToCommit);
+        }
+        static void HandleParseError(IEnumerable<Error> errs)
+        {
+            // We do nothing, and leave the default implementation
+            //  of CommandLineParser to display the issues
+        }
+
+        static void LeakMemory(int blockSize, double touchFillRatio, int delay, int maxMemoryToCommit)
+        {
             // === List ===
             // For n int values inside a pre-allocated List<int>:
             //  - The internal array will consume n x 4 bytes, plus pointer size bytes for its size, plus
@@ -36,7 +55,7 @@ namespace AllocMem
             // Total: n x 4 + 3 x ptr_size + 3 x ptr_size + 8 bytes
             //        = n x 4 + 6 x ptr_size + 8 bytes
             //
-            // For x64, sized consumed is:
+            // For x64, size consumed is:
             //  - for 1,024 elements:    1,024 x 4 bytes + 6 x 8 bytes + 8 bytes                   = 4,152
             //  - for 100,000 elements:  100,000 x 4 bytes + 6 x 8 bytes + 8 bytes                 = 400,056
             //  - for 100,000,000 elements:  100,000,000 x 4 bytes + 6 x 8 bytes + 8 bytes         = 400,000,056
@@ -74,17 +93,9 @@ namespace AllocMem
             */
 
             // === New code starts here ===
-            int blockSize;              // Memory to allocate per block, in MB
-            double touchFillRatio;         // The fill ratio for touching memory (between 0 and 1 inclusive)
-            int delay;                  // The delay between allocations
-
-            // hardcoded for now, but should be picked up from cmd args
-            blockSize = 1024;   // remember the value is in MB
-            touchFillRatio = 0.1;
-
-            if(blockSize > 8378)
+            if (blockSize > 8378)
             {
-                Console.WriteLine("Block size too large. Maximum allowed value is 8378 MB");
+                Console.WriteLine("Input block size too large. Maximum allowed value is 8378 MB. Exiting");
                 return;
             }
 
@@ -96,7 +107,7 @@ namespace AllocMem
             //  at the number of elements needed in one building block. Accounting for
             //  the overhead means getting rid of 6 elements that would total 24 bytes
             //  (at 4 bytes per int element)
-            int noElementsPerBlock = (int)((long)blockSize * 1_024_768 / 4 - 6);
+            int noElementsPerBlock = (int)((long)blockSize * 1_048_576 / 4 - 6);
 
             // The limit for the number of elements in an int array is 0X7FEFFFFF (or
             //  2,146,435,071) as captured here https://docs.microsoft.com/en-us/dotnet/api/system.array?view=net-5.0#remarks
@@ -105,42 +116,85 @@ namespace AllocMem
             //  value in the noElementsPerBlock "equation" above yields a blockSize of
             //  8,378 MB which gives in turn the max value for the blockSize variable
 
-            // Next we build the block that we'll reuse
-            int[] block = new int[noElementsPerBlock];
+            // The number of blocks that will be allocated. If the block size
+            //  doesn't fit nicely inside the max limit, we'll just allocate one more
+            int noOfMemoryBlocksToAllocate = maxMemoryToCommit != 0 ?
+                (maxMemoryToCommit % blockSize == 0 ? maxMemoryToCommit / blockSize : 
+                maxMemoryToCommit / blockSize + 1) : 0;
+            bool allocateIndefinitely = maxMemoryToCommit == 0 ? true : false;
+            Console.WriteLine("Will allocate {0} blocks of memory each consuming {1} MB, as to hit a limit of {2} MB",
+                noOfMemoryBlocksToAllocate, blockSize, maxMemoryToCommit);
 
-            // Now we'll touch the memory inside the block according to the touch fill ratio
-            //  The page size on both 32-bit and 64-bit is 4KB under both Linux and Windows,
-            //  and since arrays are allocated contiguously in memory, we just need to touch
-            //  one int element for every 1024
-            for (int i = 0; i < noElementsPerBlock * touchFillRatio; i += 1024)
-            {
-                block[i] = 0;
-            }
-
-
-            // Secondly we need to compute how many int arrays we need
-
-            //List<List<int>> 
-            List<int[]> my = new List<int[]>();
-
-            //  ....We know that the overhead is 56 bytes on 64-bit (look in the comments above)
-            //  ....We'll use the constructor that specified the upfront length, so we don't run into the copying-and-double
+            // The list whose whole purpose is to keep the references of allocated
+            //  blocks of int arrays. We'll use the constructor that specifies the
+            //  upfront length, so we don't run into the copying-and-double
             //  approach that happens with the parameterless constructor
+            List<int[]> memoryBlockList = new List<int[]>(noOfMemoryBlocksToAllocate);
 
+            // For n references inside a pre-allocated List<int[]>:
+            //  - The internal array will consume n x pointer size bytes, plus pointer size bytes for its size, plus
+            //     2x pointer size for its own sync block index and type object pointer
+            //  - 2x pointer size for the List itself (own sync block index and type object pointer) plus
+            //     1x pointer size to hold the reference to the internal array plus 
+            //     2x 4 bytes for 2 internal int fields (_size and _version) that belong to List<int>
+            // Total: n x ptr_size + 3 x ptr_size + 3 x ptr_size + 8 bytes
+            //        = (n + 6) x ptr_size + 8 bytes
+            //
+            // For x64, size consumed is:
+            //  - for 1,000 elements:    1,006 x 8 bytes + 8 bytes                  = 8,056 bytes
+            //  - for 100,000 elements:  100,006 x 8 bytes + 8 bytes                = 800,056 bytes
+            //
+            // So with a block with a minimum size of 1 MB, a list that will contain 100,000 elements - meaning
+            //  ~100 GB of allocated memory - would consume itself less than 1 MB. As such the quantity is
+            //  neglijible and we won't consider it in the computations, just print a line with the size
+
+            // The size of memory that will be consumed by the List<int[]>
+            //  as computed above
+            int listSize = (noOfMemoryBlocksToAllocate + 6) * 8 + 8;
+            Console.WriteLine("List<int[]> will consume {0} bytes", listSize);
+            Console.WriteLine();
+
+            int currentBlockNo = 0;
+            // Start the loop that will be allocating memory
+            do
+            {
+                // Next we build a memory block
+                int[] block = new int[noElementsPerBlock];
+
+                // Now we'll touch the memory inside the block according to the touch fill ratio
+                //  The page size on both 32-bit and 64-bit is 4KB under both Linux and Windows,
+                //  and since arrays are allocated contiguously in memory, we just need to touch
+                //  one int element for every 1024
+                for (int i = 0; i < noElementsPerBlock * touchFillRatio; i += 1024)
+                {
+                    block[i] = 0;
+                }
+
+                // Add the new memory block's reference to the list, so it's
+                //  not garbage collected
+                memoryBlockList.Add(block);
+
+                // Print statistics for the current block
+                Console.WriteLine("Block #{0}  +{1}MB (touched {2:f0}%)  [total allocated so far= {3}MB]", currentBlockNo,
+                    blockSize, touchFillRatio*100, blockSize*(currentBlockNo+1));
+
+                currentBlockNo++;
+            } while (currentBlockNo < noOfMemoryBlocksToAllocate || allocateIndefinitely);
+            Console.WriteLine("Allocating memory complete");
             // === End of new code ====
 
             // Set up a handler to handle exiting from the container, as
             //  using Console.ReadLine doesn't work even if "docker start -i" is used
             Console.CancelKeyPress += ((sender, args) =>
-                {
-                    Console.WriteLine("Exiting");
-                    _closingEvent.Set();
-                });
+            {
+                Console.WriteLine("Exiting");
+                _closingEvent.Set();
+            });
 
             _closingEvent.WaitOne();
 
             // Keep a reference for when not in Debug mode, to keep the GC off
-            Console.WriteLine(block.Length);
+            Console.WriteLine(memoryBlockList.Count);
         }
     }
 }

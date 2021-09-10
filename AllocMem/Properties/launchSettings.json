@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "AllocMem": {
+      "commandName": "Project",
+      "commandLineArgs": "-m 1 -x 3 -f 0.75"
+    }
+  }
+}
