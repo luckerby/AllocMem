@@ -51,6 +51,16 @@ namespace AllocMem
                 Console.WriteLine("Input block size too large. Maximum allowed value is 8188 MB. Exiting");
                 return;
             }
+
+            // Decimal values for block values are handled automatically by the
+            //  CommandLineParser, but we need to handle zero or negative values
+            //  as Min can't be used for this parameter in the Options class, as
+            //  it's scalar
+            if (blockSize < 1)
+            {
+                Console.WriteLine("Invalid block size value. Exiting");
+                return;
+            }
             
             // First we need to understand how many int elements we need inside our
             //  basic int[] building block. The int array will have an overhead of
@@ -138,7 +148,7 @@ namespace AllocMem
                 memoryBlockList.Add(block);
 
                 // Print statistics for the current block
-                Console.WriteLine("Block #{0}  +{1}MB (touched {2:f0}%)  [so far total allocated= {3}MB / total touched= {4:0.##}MB]",
+                Console.WriteLine("Block #{0}  +{1} MB (touched {2:f0}%)  [so far total allocated= {3} MB / total touched= {4:0.##} MB]",
                     currentBlockNo, blockSize, touchFillRatio*100, blockSize*(currentBlockNo+1),
                     blockSize*(currentBlockNo+1)*touchFillRatio);
 

@@ -2,7 +2,7 @@
   "profiles": {
     "AllocMem": {
       "commandName": "Project",
-      "commandLineArgs": "-m 1 -x 7 -f 0.75"
+      "commandLineArgs": "-m -1 -x 7 -f 0.75"
     }
   }
 }
