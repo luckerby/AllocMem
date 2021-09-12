@@ -46,6 +46,9 @@ namespace AllocMem
 
         static void LeakMemory(int blockSize, double touchFillRatio, int delay, int maxMemoryToCommit)
         {
+            Console.WriteLine("Starting leak method. Press a key...");
+            Console.ReadKey();
+
             if (blockSize > 8188)
             {
                 Console.WriteLine("Input block size too large. Maximum allowed value is 8188 MB. Exiting");
@@ -172,7 +175,6 @@ namespace AllocMem
             doneEvent.WaitOne();
 
             // Keep a reference for when not in Debug mode, to keep the GC off
-            //Console.WriteLine(memoryBlockList.Count);
             GC.KeepAlive(memoryBlockList);
         }
     }
