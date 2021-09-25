@@ -16,6 +16,9 @@ namespace AllocMem
         public int MaxMemoryToCommit { get; set; }
         [Option('e', Required = false, Default = 0, HelpText = "Time between allocations in ms")]
         public int Delay { get; set; }
+        [Option('b', Required = false, Default = false, HelpText = "Break execution before allocation starts and wait for a key to be pressed. Useful to see initial overhead of the process")]
+        public bool BreakAfterStart { get; set; }
+
     }
 
     class Program
@@ -36,7 +39,7 @@ namespace AllocMem
         {
             // We're here if the argument parsing was successful. Call the
             //  method that allocates memory and supply the needed values as params
-            LeakMemory(opts.SizeOfBlock, opts.TouchFillRatio, opts.Delay, opts.MaxMemoryToCommit);
+            LeakMemory(opts.SizeOfBlock, opts.TouchFillRatio, opts.Delay, opts.MaxMemoryToCommit, opts.BreakAfterStart);
         }
         static void HandleParseError(IEnumerable<Error> errs)
         {
@@ -44,10 +47,13 @@ namespace AllocMem
             //  of CommandLineParser to display the issues
         }
 
-        static void LeakMemory(int blockSize, double touchFillRatio, int delay, int maxMemoryToCommit)
+        static void LeakMemory(int blockSize, double touchFillRatio, int delay, int maxMemoryToCommit, bool breakAfterStart)
         {
-            Console.WriteLine("Starting leak method. Press a key...");
-            Console.ReadKey();
+            if (breakAfterStart)
+            {
+                Console.WriteLine("Starting leak method. Press a key...");
+                Console.ReadKey();
+            }
 
             if (blockSize > 8188)
             {
