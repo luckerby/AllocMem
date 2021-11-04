@@ -54,7 +54,7 @@ namespace AllocMem
                 Console.WriteLine("Starting leak method. Press a key...");
                 Console.ReadKey();
             }
-
+            
             if (blockSize > 8188)
             {
                 Console.WriteLine("Input block size too large. Maximum allowed value is 8188 MB. Exiting");
@@ -70,7 +70,18 @@ namespace AllocMem
                 Console.WriteLine("Invalid block size value. Exiting");
                 return;
             }
+
+            // We'll write how much memory the GC sees. On a regular OS this will
+            //  be equal to the physical RAM installed. Note that this can be misleading
+            //  as more than this amount can be allocated - for example on Windows as 
+            //  long as the commit limit is not yet hit. On a Linux container with limits
+            //  set this will usually be a hard stop, as there won't be any paging file
+            //  to turn to when that quantity is exhausted regardless if the memory isn't
+            //  touched
+            Console.WriteLine("{0:f2} MB of initial memory visible",
+                GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / 1_048_576);
             
+
             // First we need to understand how many int elements we need inside our
             //  basic int[] building block. The int array will have an overhead of
             //  24 bytes (its sync block index, type object pointer and size field all
