@@ -29,7 +29,7 @@ namespace AllocMem
             var res = Parser.Default.ParseArguments<Options>(args)
                 .WithParsed(RunOptions)
                 .WithNotParsed(HandleParseError);
-            
+
             // If Ctrl+C was pressed after the allocation completed then
             //  our custom CancelKeyPress event will make sure this point
             //  will be reached
@@ -49,12 +49,13 @@ namespace AllocMem
 
         static void LeakMemory(int blockSize, double touchFillRatio, int delay, int maxMemoryToCommit, bool breakAfterStart)
         {
+            const int NO_ROWS_WHEN_TO_PRINT_ALLOCATED_MEMORY = 10;
             if (breakAfterStart)
             {
                 Console.WriteLine("Starting leak method. Press a key...");
                 Console.ReadKey();
             }
-            
+
             if (blockSize > 8188)
             {
                 Console.WriteLine("Input block size too large. Maximum allowed value is 8188 MB. Exiting");
@@ -80,7 +81,7 @@ namespace AllocMem
             //  touched
             Console.WriteLine("{0:f2} MB of initial memory visible",
                 GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / 1_048_576);
-            
+
 
             // First we need to understand how many int elements we need inside our
             //  basic int[] building block. The int array will have an overhead of
@@ -103,7 +104,7 @@ namespace AllocMem
             // The number of blocks that will be allocated. If the block size
             //  doesn't fit nicely inside the max limit, we'll just allocate one more
             int noOfMemoryBlocksToAllocate = maxMemoryToCommit != 0 ?
-                (maxMemoryToCommit % blockSize == 0 ? maxMemoryToCommit / blockSize : 
+                (maxMemoryToCommit % blockSize == 0 ? maxMemoryToCommit / blockSize :
                 maxMemoryToCommit / blockSize + 1) : 0;
             bool allocateIndefinitely = maxMemoryToCommit == 0 ? true : false;
             Console.WriteLine("Will allocate {0} blocks of memory each consuming {1} MB, as to hit a limit of {2} MB",
@@ -142,6 +143,13 @@ namespace AllocMem
             // Start the loop that will be allocating memory
             do
             {
+                // Print the process statistics so we can easily see how much the process
+                //  actually uses in terms of RAM and committed memory. This way we can
+                //  easily compare to the values we're printing for each of the allocated
+                //  blocks
+                if (currentBlockNo % NO_ROWS_WHEN_TO_PRINT_ALLOCATED_MEMORY == 0)
+                    PrintProcessStats();
+
                 // Delay the next allocation by the amount specified. Note
                 //  that 0 won't cause any sort of delay. We do this here
                 //  as opposed to the end of the loop as to not wait after
@@ -169,11 +177,13 @@ namespace AllocMem
 
                 // Print statistics for the current block
                 Console.WriteLine("Block #{0}  +{1} MB (touched {2:f0}%)  [so far total allocated= {3} MB / total touched= {4:0.##} MB]",
-                    currentBlockNo, blockSize, touchFillRatio*100, blockSize*(currentBlockNo+1),
-                    blockSize*(currentBlockNo+1)*touchFillRatio);
+                    currentBlockNo, blockSize, touchFillRatio * 100, blockSize * (currentBlockNo + 1),
+                    blockSize * (currentBlockNo + 1) * touchFillRatio);
 
                 currentBlockNo++;
             } while (currentBlockNo < noOfMemoryBlocksToAllocate || allocateIndefinitely);
+            // Print the process statistics one last time
+            PrintProcessStats();
             Console.WriteLine("Allocating memory complete. Press Ctrl+C to exit");
 
             // Use an event to handle the case of the app running inside a container, as
@@ -193,6 +203,15 @@ namespace AllocMem
 
             // Keep a reference for when not in Debug mode, to keep the GC off
             GC.KeepAlive(memoryBlockList);
+        }
+
+        static void PrintProcessStats()
+        {
+            Console.WriteLine("= process stats: {0:f2} MB in RAM / {1:f2} MB private / {2} gen2 GCs run so far",
+                (float)System.Diagnostics.Process.GetCurrentProcess().WorkingSet64 / 1_048_576,
+                (float)System.Diagnostics.Process.GetCurrentProcess().PrivateMemorySize64 / 1_048_576,
+                GC.CollectionCount(2));
+
         }
     }
 }
