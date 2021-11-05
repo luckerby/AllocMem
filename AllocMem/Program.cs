@@ -110,7 +110,8 @@ namespace AllocMem
                 maxMemoryToCommit / blockSize + 1) : 0;
             bool allocateIndefinitely = maxMemoryToCommit == 0 ? true : false;
             Console.WriteLine("Will allocate {0} blocks of memory each consuming {1} MB, as to hit a limit of {2} MB",
-                noOfMemoryBlocksToAllocate, blockSize, maxMemoryToCommit);
+                noOfMemoryBlocksToAllocate==0 ? "an unlimited number of" : noOfMemoryBlocksToAllocate,
+                blockSize, maxMemoryToCommit);
 
             // The list whose whole purpose is to keep the references of allocated
             //  blocks of int arrays. We'll use the constructor that specifies the
