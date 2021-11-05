@@ -18,7 +18,8 @@ namespace AllocMem
         public int Delay { get; set; }
         [Option('b', Required = false, Default = false, HelpText = "Break execution before allocation starts and wait for a key to be pressed. Useful to see initial overhead of the process")]
         public bool BreakAfterStart { get; set; }
-
+        [Option('p', Required = false, Default = 10, HelpText = "Print process statistics every time after these many blocks are allocated")]
+        public int RowsToWaitBeforePrintingProcessStats { get; set; }
     }
 
     class Program
@@ -39,7 +40,8 @@ namespace AllocMem
         {
             // We're here if the argument parsing was successful. Call the
             //  method that allocates memory and supply the needed values as params
-            LeakMemory(opts.SizeOfBlock, opts.TouchFillRatio, opts.Delay, opts.MaxMemoryToCommit, opts.BreakAfterStart);
+            LeakMemory(opts.SizeOfBlock, opts.TouchFillRatio, opts.Delay, opts.MaxMemoryToCommit, opts.BreakAfterStart,
+                opts.RowsToWaitBeforePrintingProcessStats);
         }
         static void HandleParseError(IEnumerable<Error> errs)
         {
@@ -47,9 +49,9 @@ namespace AllocMem
             //  of CommandLineParser to display the issues
         }
 
-        static void LeakMemory(int blockSize, double touchFillRatio, int delay, int maxMemoryToCommit, bool breakAfterStart)
+        static void LeakMemory(int blockSize, double touchFillRatio, int delay, int maxMemoryToCommit, bool breakAfterStart,
+            int rowsToWaitBeforePrintingProcessStats)
         {
-            const int NO_ROWS_WHEN_TO_PRINT_ALLOCATED_MEMORY = 10;
             if (breakAfterStart)
             {
                 Console.WriteLine("Starting leak method. Press a key...");
@@ -147,7 +149,7 @@ namespace AllocMem
                 //  actually uses in terms of RAM and committed memory. This way we can
                 //  easily compare to the values we're printing for each of the allocated
                 //  blocks
-                if (currentBlockNo % NO_ROWS_WHEN_TO_PRINT_ALLOCATED_MEMORY == 0)
+                if (currentBlockNo % rowsToWaitBeforePrintingProcessStats == 0)
                     PrintProcessStats();
 
                 // Delay the next allocation by the amount specified. Note
