@@ -18,7 +18,7 @@ namespace AllocMem
         public int Delay { get; set; }
         [Option('b', Required = false, Default = false, HelpText = "Break execution before allocation starts and wait for a key to be pressed. Useful to see initial overhead of the process")]
         public bool BreakAfterStart { get; set; }
-        [Option('p', Required = false, Default = 10, HelpText = "Print process statistics every time after these many blocks are allocated")]
+        [Option('p', Required = false, Default = 0, HelpText = "Print process statistics every time after these many blocks are allocated")]
         public int RowsToWaitBeforePrintingProcessStats { get; set; }
     }
 
@@ -150,8 +150,9 @@ namespace AllocMem
                 //  actually uses in terms of RAM and committed memory. This way we can
                 //  easily compare to the values we're printing for each of the allocated
                 //  blocks
-                if (currentBlockNo % rowsToWaitBeforePrintingProcessStats == 0)
-                    PrintProcessStats();
+                if (currentBlockNo == 0 || (rowsToWaitBeforePrintingProcessStats != 0 &&
+                    currentBlockNo % rowsToWaitBeforePrintingProcessStats == 0))
+                        PrintProcessStats();
 
                 // Delay the next allocation by the amount specified. Note
                 //  that 0 won't cause any sort of delay. We do this here
